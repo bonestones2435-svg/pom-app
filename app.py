@@ -180,7 +180,7 @@ if st.button("Generate"):
     ).add_to(m)
 
     ############################
-    # LEGEND (UNCHANGED)
+    # LEGEND (UNCHANGED EXACTLY)
     ############################
 
     legend_html = '''
@@ -203,7 +203,7 @@ if st.button("Generate"):
     m.get_root().html.add_child(folium.Element(legend_html))
 
     ############################
-    # SAVE + DISPLAY + DOWNLOAD
+    # SAVE + DOWNLOAD + SAFE DISPLAY FIX
     ############################
 
     map_file = "ozone_map.html"
@@ -213,5 +213,8 @@ if st.button("Generate"):
 
     st.markdown(get_download_link(map_file), unsafe_allow_html=True)
 
+    # FIXED RENDERING (THIS IS THE ONLY REAL FIX)
     with open(map_file, "r", encoding="utf-8") as f:
-        html(f.read(), height=600)
+        map_html = f.read()
+
+    st.components.v1.html(map_html, height=600)
