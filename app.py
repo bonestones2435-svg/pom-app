@@ -184,24 +184,63 @@ if st.button("Generate"):
     ############################
 
     legend_html = '''
-    <div style="
-    position: fixed;
-    bottom: 50px;
-    left: 50px;
-    width: 320px;
-    background-color: white;
-    border:2px solid grey;
-    z-index:9999;
-    font-size:14px;
-    padding: 10px;
-    box-shadow: 2px 2px 6px rgba(0,0,0,0.3);
-    ">
-    <b>Ozone Concentration (ppb)</b>
-    </div>
-    '''
+<div style="
+position: fixed;
+bottom: 50px;
+left: 50px;
+width: 320px;
+background-color: white;
+border:2px solid grey;
+z-index:9999;
+font-size:14px;
+padding: 10px;
+box-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+">
 
-    m.get_root().html.add_child(folium.Element(legend_html))
+<b>Ozone Concentration (ppb)</b><br>
+<span style="font-size:11px;">(EPA 8-hour categories)</span><br><br>
 
+<div style="
+width: 100%;
+height: 18px;
+background: linear-gradient(to right,
+    blue 0%,
+    cyan 27%,
+    yellow 42%,
+    orange 52%,
+    red 65%,
+    purple 100%);
+border: 1px solid black;
+margin-bottom: 5px;
+"></div>
+
+<div style="
+width: 100%;
+display: grid;
+grid-template-columns: repeat(6, 1fr);
+font-size: 11px;
+text-align: center;
+">
+<span>0</span>
+<span>54</span>
+<span>70</span>
+<span>85</span>
+<span>105</span>
+<span>200+</span>
+</div>
+
+<div style="
+font-size:11px;
+text-align:center;
+margin-top:6px;
+">
+Good → Moderate → USG → Unhealthy → Very Unhealthy → Hazardous
+</div>
+
+</div>
+'''
+
+m.get_root().html.add_child(folium.Element(legend_html))
     ############################
     # SAVE + DOWNLOAD + SAFE DISPLAY FIX
     ############################
