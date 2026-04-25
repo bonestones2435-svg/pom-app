@@ -123,8 +123,8 @@ if st.button("Generate"):
         ########################################
         # ALIGN
         ########################################
-        pom_resampled = pom.resample("1S").mean().interpolate()
-        gps_resampled = gps.resample("1S").mean().interpolate()
+        pom_resampled = pom.resample("1s").mean().interpolate()
+        gps_resampled = gps.resample("1s").mean().interpolate()
 
         data = pd.concat([pom_resampled, gps_resampled], axis=1).dropna()
 
