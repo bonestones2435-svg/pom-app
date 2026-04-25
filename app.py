@@ -1,10 +1,10 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
 import folium
 from folium.plugins import HeatMap
-from streamlit.components.v1 import html
+import streamlit as st
 import base64
 
 st.title("POM Heatmap Generator")
@@ -17,41 +17,40 @@ csv_file = st.file_uploader("Upload CSV", type=["csv"])
 kml_file = st.file_uploader("Upload KML", type=["kml"])
 
 ############################
-# DATA INTEGRITY (ADDED - YOUR ORIGINAL LOGIC)
+# DATA INTEGRITY (ADDED ONLY)
 ############################
 
 def data_integrity(df):
-    columns = [
+    cols = [
         "Log Number","Ozone","Cell Temp","Cell Pressure","PDV",
         "BattV","Latitude","Longitude","Altitude","GPSquality"
     ]
 
-    error_count = 0
+    errors = 0
     total = 0
 
-    for col in columns:
+    for col in cols:
         if col in df.columns:
             total += len(df[col])
-            converted = pd.to_numeric(df[col], errors='coerce')
-            error_count += ((converted.isnull()) & (df[col].notnull())).sum()
+            converted = pd.to_numeric(df[col], errors="coerce")
+            errors += ((converted.isnull()) & (df[col].notnull())).sum()
 
     if total == 0:
         return 0
 
-    return round(100 * (1 - error_count / total), 2)
+    return round(100 * (1 - errors / total), 2)
 
 ############################
 # DOWNLOAD FUNCTION
 ############################
 
-def download_button(file_path):
+def get_download_link(file_path):
     with open(file_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
-        href = f'<a href="data:file/html;base64,{b64}" download="ozone_map.html">📥 Download Map</a>'
-        return href
+    return f'<a href="data:file/html;base64,{b64}" download="ozone_map.html">📥 Download Map</a>'
 
 ############################
-# MAIN
+# RUN ONLY IF FILES UPLOADED
 ############################
 
 if st.button("Generate"):
@@ -61,7 +60,7 @@ if st.button("Generate"):
         st.stop()
 
     ############################
-    # READ CSV (UNCHANGED CORE)
+    # READ POM CSV (UNCHANGED CORE)
     ############################
 
     df = pd.read_csv(csv_file, skiprows=5, header=None)
@@ -77,7 +76,7 @@ if st.button("Generate"):
     st.write("Loaded ozone points:", len(pom))
 
     ############################
-    # DATA INTEGRITY SCORE (ADDED UI)
+    # DATA INTEGRITY DISPLAY (ADDED)
     ############################
 
     df.columns = [
@@ -92,7 +91,7 @@ if st.button("Generate"):
     st.progress(score / 100)
 
     ############################
-    # READ KML (UNCHANGED CORE)
+    # READ KML GPS DATA (UNCHANGED CORE)
     ############################
 
     tree = ET.parse(kml_file)
@@ -106,22 +105,32 @@ if st.button("Generate"):
         if text:
             lines = text.strip().split()
             for line in lines:
-                parts = line.strip().split(",")
-                if len(parts) >= 2:
+                parts = line.strip().split()
+                if len(parts) == 2 or len(parts) == 3:
                     coords.append((float(parts[0]), float(parts[1])))
+                else:
+                    parts = line.strip().split(",")
+                    if len(parts) >= 2:
+                        coords.append((float(parts[0]), float(parts[1])))
         return coords
 
     for elem in root.iter():
-        if "coord" in elem.tag.lower() or "coordinates" in elem.tag.lower():
+        tag_lower = elem.tag.lower()
+        if "coord" in tag_lower or "coordinates" in tag_lower:
             coords = parse_coord_text(elem.text)
             for lon_val, lat_val in coords:
                 lon.append(lon_val)
                 lat.append(lat_val)
 
-    gps = pd.DataFrame({"lat": lat, "lon": lon})
+    gps = pd.DataFrame({
+        "lat": lat,
+        "lon": lon
+    })
+
+    print("Loaded GPS points:", len(lat))
 
     ############################
-    # ALIGN (UNCHANGED CORE FIXED TO 1s)
+    # ALIGN (UNCHANGED CORE)
     ############################
 
     gps["time"] = pd.date_range(
@@ -140,33 +149,35 @@ if st.button("Generate"):
     gps_resampled["lat"] = gps_resampled["lat"].interpolate()
     gps_resampled["lon"] = gps_resampled["lon"].interpolate()
 
-    data = pd.concat([pom_resampled, gps_resampled], axis=1).dropna().reset_index()
+    data = pd.concat([pom_resampled, gps_resampled], axis=1).dropna()
+    data = data.reset_index()
+
+    print("Aligned data points:", len(data))
 
     ############################
-    # MAP (CLICKABLE TOOLTIP ADDED)
+    # CREATE MAP (UNCHANGED CORE)
     ############################
+
+    center_lat = data["lat"].mean()
+    center_lon = data["lon"].mean()
 
     m = folium.Map(
-        location=[data["lat"].mean(), data["lon"].mean()],
+        location=[center_lat, center_lon],
         zoom_start=14,
         tiles="CartoDB positron"
     )
 
-    heat_data = []
+    heat_data = [
+        [row["lat"], row["lon"], row["ozone"]]
+        for _, row in data.iterrows()
+    ]
 
-    for _, row in data.iterrows():
-        heat_data.append([row["lat"], row["lon"], row["ozone"]])
-
-        # 🔥 CLICK POPUP ADDED (NEW FEATURE ONLY)
-        folium.CircleMarker(
-            location=[row["lat"], row["lon"]],
-            radius=2,
-            fill=True,
-            fill_opacity=0.6,
-            popup=f"Ozone: {row['ozone']}"
-        ).add_to(m)
-
-    HeatMap(heat_data, radius=2.5, blur=3).add_to(m)
+    HeatMap(
+        heat_data,
+        radius=2.5,
+        blur=3,
+        max_zoom=24
+    ).add_to(m)
 
     ############################
     # LEGEND (UNCHANGED)
@@ -198,6 +209,9 @@ if st.button("Generate"):
     map_file = "ozone_map.html"
     m.save(map_file)
 
-    html(m._repr_html_(), height=600)
+    st.success("Map generated successfully!")
 
-    st.markdown(download_button(map_file), unsafe_allow_html=True)
+    st.markdown(get_download_link(map_file), unsafe_allow_html=True)
+
+    with open(map_file, "r", encoding="utf-8") as f:
+        html(f.read(), height=600)
