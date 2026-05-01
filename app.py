@@ -402,21 +402,6 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 
     st.markdown('<div class="section-label" style="margin-top:24px;">Map</div>', unsafe_allow_html=True)
 
-    legend_html = '''
-    <div style="position:fixed;bottom:50px;left:50px;width:320px;background:#1a1a2e;
-    border:1px solid #333;z-index:9999;font-size:13px;padding:12px;border-radius:8px;
-    color:#e6edf3;box-shadow:0 4px 12px rgba(0,0,0,0.5);">
-    <b style="font-family:monospace;">Ozone (ppb)</b><br>
-    <span style="font-size:10px;color:#8b949e;">(EPA 8-hour categories)</span><br><br>
-    <div style="width:100%;height:14px;border-radius:4px;
-    background:linear-gradient(to right,blue 0%,cyan 27%,yellow 42%,orange 52%,red 65%,purple 100%);
-    margin-bottom:6px;"></div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);font-size:10px;text-align:center;color:#8b949e;">
-    <span>0</span><span>54</span><span>70</span><span>85</span><span>105</span><span>200+</span>
-    </div>
-    <div style="font-size:10px;text-align:center;margin-top:8px;color:#8b949e;">
-    Good → Moderate → USG → Unhealthy → Very Unhealthy → Hazardous
-    </div></div>'''
 
     pom_cmap = cm.LinearColormap(
         ["blue", "cyan", "yellow", "orange", "red"],
