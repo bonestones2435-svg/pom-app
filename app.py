@@ -128,6 +128,26 @@ def run_pom(csv_file, gpx_file, time_of_day):
         lambda t: t.replace(year=gpx_date.year, month=gpx_date.month, day=gpx_date.day)
     )
 
+    # --- Show time overlap diagnostics ---
+    pom_start, pom_end = pom["time"].min(), pom["time"].max()
+    gps_start, gps_end = gps["time"].min(), gps["time"].max()
+    overlap_start = max(pom_start, gps_start)
+    overlap_end   = min(pom_end, gps_end)
+
+    st.markdown("#### ⏱️ Time Overlap Check")
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("POM range", f"{pom_start.strftime('%H:%M:%S')} → {pom_end.strftime('%H:%M:%S')}")
+    with col_b:
+        st.metric("GPX range", f"{gps_start.strftime('%H:%M:%S')} → {gps_end.strftime('%H:%M:%S')}")
+    with col_c:
+        if overlap_start < overlap_end:
+            duration = int((overlap_end - overlap_start).total_seconds())
+            st.metric("Overlap", f"{overlap_start.strftime('%H:%M:%S')} → {overlap_end.strftime('%H:%M:%S')}", f"{duration}s of shared data")
+        else:
+            st.error("❌ No overlap detected between POM and GPX time ranges.")
+            st.stop()
+
     # --- Align using real timestamps ---
     pom = pom.set_index("time")
     gps = gps.set_index("time")
