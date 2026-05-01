@@ -90,7 +90,11 @@ def run_pom(csv_file, gpx_file, time_of_day):
     df_raw = pd.read_csv(csv_file, skiprows=5, header=None)
 
     ozone = pd.to_numeric(df_raw.iloc[:, 1], errors="coerce")
-    time_utc = pd.to_datetime(df_raw.iloc[:, 11], format="%H:%M:%S", errors="coerce")
+
+    # Combine date (col 10) + time (col 11) into a full datetime
+    # Date format is MM/DD/YY, time is HH:MM:SS
+    datetime_str = df_raw.iloc[:, 10].astype(str) + " " + df_raw.iloc[:, 11].astype(str)
+    time_utc = pd.to_datetime(datetime_str, format="%m/%d/%y %H:%M:%S", errors="coerce")
 
     pom = pd.DataFrame({
         "time": time_utc,
