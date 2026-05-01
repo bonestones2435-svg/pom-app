@@ -91,13 +91,11 @@ def run_pom(csv_file, gpx_file, time_of_day):
 
     ozone = pd.to_numeric(df_raw.iloc[:, 1], errors="coerce")
 
-    # Combine date (col 10) + time (col 11) into a full datetime
-    # Date format is MM/DD/YY, time is HH:MM:SS
-    datetime_str = df_raw.iloc[:, 10].astype(str) + " " + df_raw.iloc[:, 11].astype(str)
-    time_utc = pd.to_datetime(datetime_str, format="%m/%d/%y %H:%M:%S", errors="coerce")
+    # Parse time-only from col 11 — date is injected from GPX so no hardcoding needed
+    time_only = pd.to_datetime(df_raw.iloc[:, 11], format="%H:%M:%S", errors="coerce")
 
     pom = pd.DataFrame({
-        "time": time_utc,
+        "time": time_only,
         "ozone": ozone
     }).dropna()
 
@@ -123,6 +121,12 @@ def run_pom(csv_file, gpx_file, time_of_day):
     if gps.empty:
         st.error("No GPS points found in GPX file. Check that your file has <trkpt> elements with <time> tags.")
         st.stop()
+
+    # Inject the date from GPX into POM times so alignment works without hardcoding a date
+    gpx_date = gps["time"].iloc[0].date()
+    pom["time"] = pom["time"].apply(
+        lambda t: t.replace(year=gpx_date.year, month=gpx_date.month, day=gpx_date.day)
+    )
 
     # --- Align using real timestamps ---
     pom = pom.set_index("time")
