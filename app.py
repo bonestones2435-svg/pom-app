@@ -198,7 +198,7 @@ def show_summary_stats(data, value_col, unit):
 # TIME SERIES PLOT
 ############################
 
-def show_timeseries(data, value_col, label, unit, color, outliers=None):
+def show_timeseries(data, value_col, label, unit, color, outliers=None, ylim=None):
     st.markdown(f'<div class="section-label" style="margin-top:24px;">{label} Over Time</div>', unsafe_allow_html=True)
 
     time_col = "index" if "index" in data.columns else data.columns[0]
@@ -213,6 +213,10 @@ def show_timeseries(data, value_col, label, unit, color, outliers=None):
         ax.scatter(outliers[time_col], outliers[value_col],
                    color="#f85149", s=18, zorder=5, label="Outliers")
         ax.legend(facecolor="#161b22", edgecolor="#21262d", labelcolor="#e6edf3", fontsize=8)
+
+    # Apply y-axis cap if provided (e.g. PM2.5 capped at 0–50 matching notebook)
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=5))
@@ -269,7 +273,12 @@ def check_overlap(start_a, end_a, start_b, end_b, label_a, label_b):
 
 ############################
 # MAP BUILDER
-############################
+# -----------------------------------------
+# Legend strategy (matches notebook exactly):
+#   - ALWAYS attach a cm.LinearColormap to the map via colormap.add_to(m)
+#   - This renders the Folium colorbar legend in BOTH heatmap and scatter modes
+#   - For POM ozone only, we also keep the custom HTML legend box (EPA categories)
+# -----------------------------------------
 
 def build_map(data, lat_col, lon_col, value_col, mode, filename,
               legend_html=None, colormap=None, vmin=None, vmax=None):
@@ -278,16 +287,28 @@ def build_map(data, lat_col, lon_col, value_col, mode, filename,
         zoom_start=15, tiles="CartoDB positron"
     )
 
+    # Resolve vmin/vmax once
+    _vmin = vmin if vmin is not None else data[value_col].min()
+    _vmax = vmax if vmax is not None else data[value_col].max()
+
+    # Build colormap if not passed in — used for scatter AND as the legend
+    cmap = colormap or cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=_vmin, vmax=_vmax
+    )
+
     if mode == "Heatmap":
         heat_data = [[row[lat_col], row[lon_col], row[value_col]] for _, row in data.iterrows()]
         HeatMap(heat_data, radius=3, blur=3, max_zoom=24).add_to(m)
+
+        # Always attach the colormap legend — same as notebook's colormap.add_to(m)
+        cmap.add_to(m)
+
+        # POM ozone: also keep the EPA category HTML box
         if legend_html:
             m.get_root().html.add_child(folium.Element(legend_html))
     else:
-        if vmin is None: vmin = data[value_col].min()
-        if vmax is None: vmax = data[value_col].max()
-        cmap = colormap or cm.LinearColormap(
-            ["blue","cyan","yellow","orange","red"], vmin=vmin, vmax=vmax)
+        # Scatter mode: draw colored dots + attach colormap legend
         cmap.add_to(m)
         for _, row in data.iterrows():
             color = cmap(row[value_col])
@@ -297,6 +318,10 @@ def build_map(data, lat_col, lon_col, value_col, mode, filename,
                 fill_color=color, fill_opacity=0.85, weight=0,
                 popup=f"{value_col}: {row[value_col]:.2f}"
             ).add_to(m)
+
+        # POM ozone: also keep the EPA category HTML box
+        if legend_html:
+            m.get_root().html.add_child(folium.Element(legend_html))
 
     m.save(filename)
     return m
@@ -387,6 +412,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 
     st.markdown('<div class="section-label" style="margin-top:24px;">Map</div>', unsafe_allow_html=True)
 
+    # POM ozone: custom EPA category HTML legend box (kept as-is)
     legend_html = '''
     <div style="position:fixed;bottom:50px;left:50px;width:320px;background:#1a1a2e;
     border:1px solid #333;z-index:9999;font-size:13px;padding:12px;border-radius:8px;
@@ -403,9 +429,16 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
     Good → Moderate → USG → Unhealthy → Very Unhealthy → Hazardous
     </div></div>'''
 
+    # Also build a Folium colormap for POM (used as the map colorbar)
+    pom_cmap = cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=0, vmax=200,
+        caption="Ozone (ppb)"
+    )
+
     map_file = "pom_ozone_map.html"
     build_map(data, "lat", "lon", "ozone", map_mode, map_file,
-              legend_html=legend_html, vmin=0, vmax=200)
+              legend_html=legend_html, colormap=pom_cmap, vmin=0, vmax=200)
 
     st.success(f"✅ Map generated — {len(data):,} points plotted")
     st.markdown(
@@ -449,7 +482,7 @@ def prepare_heatmap_data(pops_df, gps_df, value_col):
     gr["latitude"]  = gr["latitude"].interpolate()
     gr["longitude"] = gr["longitude"].interpolate()
 
-    # Inner join on shared timestamps — this IS the walk window, no manual filter needed
+    # Inner join on shared timestamps — this IS the walk window
     return pd.concat([pr, gr], axis=1).dropna().reset_index()
 
 ############################
@@ -489,18 +522,31 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
         "POPS", "GPX"
     )
 
-    # --- PM2.5 ---
+    # -----------------------------------------------
+    # PM2.5
+    # -----------------------------------------------
     st.markdown("---")
     st.markdown('<div class="section-label">PM2.5</div>', unsafe_allow_html=True)
     pm25_data = prepare_heatmap_data(pops_df, gps_df, "PM2p5_ug_m3")
     st.caption(f"✓ {len(pm25_data):,} aligned points")
     pm25_outliers = show_summary_stats(pm25_data, "PM2p5_ug_m3", "µg/m³")
-    show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8", pm25_outliers)
+
+    # PM2.5 time series: y-axis capped at 0–50 to match notebook's set_ylim(0, 50)
+    show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8",
+                    pm25_outliers, ylim=(0, 50))
 
     pm25_file = "pops_pm25_map.html"
-    pm25_cmap = cm.LinearColormap(["blue","cyan","yellow","orange","red"], vmin=0, vmax=50, caption="PM2.5 (µg/m³)")
+
+    # Colormap matches notebook exactly: blue→cyan→yellow→orange→red, vmin=0, vmax=50
+    pm25_cmap = cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=0, vmax=50,
+        caption="PM2.5 (µg/m³)"
+    )
+
     build_map(pm25_data, "latitude", "longitude", "PM2p5_ug_m3", map_mode, pm25_file,
               colormap=pm25_cmap, vmin=0, vmax=50)
+
     st.markdown('<div class="section-label" style="margin-top:16px;">PM2.5 Map</div>', unsafe_allow_html=True)
     st.markdown(
         get_download_link(pm25_file, "📥 Download PM2.5 Map", "pops_pm25_map.html") + " &nbsp;|&nbsp; " +
@@ -510,7 +556,9 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     with open(pm25_file, "r", encoding="utf-8") as f:
         st.components.v1.html(f.read(), height=500)
 
-    # --- PartCon ---
+    # -----------------------------------------------
+    # PartCon
+    # -----------------------------------------------
     st.markdown("---")
     st.markdown('<div class="section-label">Particle Concentration</div>', unsafe_allow_html=True)
     partcon_data = prepare_heatmap_data(pops_df, gps_df, "PartCon")
@@ -519,10 +567,19 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     show_timeseries(partcon_data, "PartCon", "Particle Concentration", "#/cm³", "#a78bfa", pc_outliers)
 
     partcon_file = "pops_partcon_map.html"
-    pc_vmin, pc_vmax = partcon_data["PartCon"].min(), partcon_data["PartCon"].max()
-    pc_cmap = cm.LinearColormap(["blue","cyan","yellow","orange","red"], vmin=pc_vmin, vmax=pc_vmax, caption="PartCon (#/cm³)")
+    pc_vmin = partcon_data["PartCon"].min()
+    pc_vmax = partcon_data["PartCon"].max()
+
+    # Colormap matches notebook: blue→cyan→yellow→orange→red, dynamic range from data
+    pc_cmap = cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=pc_vmin, vmax=pc_vmax,
+        caption="Particle Concentration (#/cm³)"
+    )
+
     build_map(partcon_data, "latitude", "longitude", "PartCon", map_mode, partcon_file,
               colormap=pc_cmap, vmin=pc_vmin, vmax=pc_vmax)
+
     st.markdown('<div class="section-label" style="margin-top:16px;">Particle Concentration Map</div>', unsafe_allow_html=True)
     st.markdown(
         get_download_link(partcon_file, "📥 Download PartCon Map", "pops_partcon_map.html") + " &nbsp;|&nbsp; " +
