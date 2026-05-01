@@ -456,7 +456,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 def calculate_pm2_5(row):
     bin_cols = [f"b{i}" for i in range(16)]
     SD = row[bin_cols].values
-    PF = row[" POPS_Flow"]
+    PF = row["POPS_Flow"]
     if PF == 0 or np.isnan(PF): return np.nan
     Dp = np.array([0.14,0.17,0.205,0.249,0.302,0.366,0.443,0.537,
                    0.651,0.789,0.956,1.159,1.404,1.702,2.062,2.500])
