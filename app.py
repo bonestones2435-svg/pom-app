@@ -431,7 +431,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
     st.success(f"✅ Map generated — {len(data):,} points plotted")
     st.markdown(
         get_download_link(map_file, "📥 Download Map (HTML)", "pom_ozone_map.html") + " &nbsp;|&nbsp; " +
-        get_csv_download_link(data[["index","ozone","lat","lon"]], "📊 Download Data (CSV)", "pom_data.csv"),
+        get_csv_download_link(data[["time","ozone","lat","lon"]], "📊 Download Data (CSV)", "pom_data.csv"),
         unsafe_allow_html=True
     )
     with open(map_file, "r", encoding="utf-8") as f:
