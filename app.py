@@ -532,7 +532,7 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     pm25_outliers = show_summary_stats(pm25_data, "PM2p5_ug_m3", "µg/m³")
 
     # PM2.5 time series: y-axis capped at 0–50 to match notebook's set_ylim(0, 50)
-    show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8",
+    show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8", pm25_outliers
                     )
 
     pm25_file = "pops_pm25_map.html"
