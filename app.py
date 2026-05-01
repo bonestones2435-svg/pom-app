@@ -472,8 +472,8 @@ def run_pops(csv_file, kml_file, walk_start_est, walk_end_est, time_of_day, sess
     label = session_label if session_label else f"POPS · {time_of_day}"
     st.markdown(f'<div class="section-label" style="margin-top:8px;">Results — {label}</div>', unsafe_allow_html=True)
 
-    walk_start_utc = walk_start_est.tz_localize("US/Eastern").tz_convert("UTC").tz_localize(None)
-    walk_end_utc   = walk_end_est.tz_localize("US/Eastern").tz_convert("UTC").tz_localize(None)
+    walk_start_utc = walk_start_est.tz_localize("America/New_York").tz_convert("UTC").tz_localize(None)
+    walk_end_utc   = walk_end_est.tz_localize("America/New_York").tz_convert("UTC").tz_localize(None)
 
     pops_df = pd.read_csv(csv_file).copy()
     pops_df["DateTime_utc"] = pd.to_datetime(pops_df["DateTime"], unit="s", utc=True).dt.tz_localize(None)
