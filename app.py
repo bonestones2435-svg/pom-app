@@ -418,11 +418,6 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
     Good → Moderate → USG → Unhealthy → Very Unhealthy → Hazardous
     </div></div>'''
 
-    pom_cmap = cm.LinearColormap(
-        ["blue", "cyan", "yellow", "orange", "red"],
-        vmin=0, vmax=200,
-        caption="Ozone (ppb)"
-    )
 
     map_file = "pom_ozone_map.html"
     build_map(data, "lat", "lon", "ozone", map_mode, map_file,
