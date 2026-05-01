@@ -426,7 +426,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 
     map_file = "pom_ozone_map.html"
     build_map(data, "lat", "lon", "ozone", map_mode, map_file,
-              legend_html=legend_html, colormap=pom_cmap, vmin=0, vmax=200)
+              legend_html=legend_html, vmin=0, vmax=200)
 
     st.success(f"✅ Map generated — {len(data):,} points plotted")
     st.markdown(
