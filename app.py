@@ -302,7 +302,7 @@ def build_map(data, lat_col, lon_col, value_col, mode, filename,
     return m
 
 ############################
-# GPX PARSER
+# GPX PARSER (used by both POM and POPS)
 ############################
 
 def parse_gpx(gpx_file):
@@ -359,7 +359,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
         st.error("No GPS points found in GPX file.")
         st.stop()
 
-    # Inject GPX date into POM times
+    # Inject GPX date into POM times (POM has no date in its time column)
     gpx_date = gps["time"].iloc[0].date()
     pom["time"] = pom["time"].apply(
         lambda t: t.replace(year=gpx_date.year, month=gpx_date.month, day=gpx_date.day)
@@ -417,25 +417,6 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
         st.components.v1.html(f.read(), height=600)
 
 ############################
-# KML PARSER
-############################
-
-def parse_kml_track(kml_file):
-    tree = ET.parse(kml_file)
-    root = tree.getroot()
-    ns = {"kml":"http://www.opengis.net/kml/2.2","gx":"http://www.google.com/kml/ext/2.2"}
-    track = root.find(".//gx:Track", ns)
-    if track is None:
-        raise ValueError("No gx:Track found in KML file.")
-    gps_data = []
-    for when, coord in zip(track.findall("kml:when", ns), track.findall("gx:coord", ns)):
-        ts = pd.to_datetime(when.text)
-        ts = ts.tz_convert("UTC").tz_localize(None) if ts.tzinfo else ts.tz_localize("US/Eastern").tz_convert("UTC").tz_localize(None)
-        lon, lat, _ = map(float, coord.text.strip().split())
-        gps_data.append({"time": ts, "latitude": lat, "longitude": lon})
-    return pd.DataFrame(gps_data).sort_values("time").reset_index(drop=True)
-
-############################
 # POPS PM2.5 CALCULATION
 ############################
 
@@ -450,31 +431,36 @@ def calculate_pm2_5(row):
 
 ############################
 # POPS ALIGNMENT
+# POPS DateTime is Unix UTC — no date injection needed, unlike POM.
+# GPX defines the walk window naturally through overlap.
 ############################
 
-def prepare_heatmap_data(pops_df, gps_df, start_utc, end_utc, value_col):
-    pw = pops_df[(pops_df["DateTime_utc"] >= start_utc) & (pops_df["DateTime_utc"] <= end_utc)].copy()
-    gw = gps_df[(gps_df["time"] >= start_utc) & (gps_df["time"] <= end_utc)].copy()
-    pw = pw.set_index("DateTime_utc")
-    gw = gw.set_index("time")
+def prepare_heatmap_data(pops_df, gps_df, value_col):
+    # Rename GPX lat/lon to match expected column names
+    gps = gps_df.rename(columns={"lat": "latitude", "lon": "longitude"})
+
+    pw = pops_df.set_index("DateTime_utc")
+    gw = gps.set_index("time")
+
     pr = pw[[value_col]].resample("1s").mean()
     gr = gw[["latitude","longitude"]].resample("1s").mean()
+
     pr[value_col]   = pr[value_col].interpolate()
     gr["latitude"]  = gr["latitude"].interpolate()
     gr["longitude"] = gr["longitude"].interpolate()
+
+    # Inner join on shared timestamps — this IS the walk window, no manual filter needed
     return pd.concat([pr, gr], axis=1).dropna().reset_index()
 
 ############################
 # POPS PIPELINE
 ############################
 
-def run_pops(csv_file, kml_file, walk_start_est, walk_end_est, time_of_day, session_label, map_mode):
+def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     label = session_label if session_label else f"POPS · {time_of_day}"
     st.markdown(f'<div class="section-label" style="margin-top:8px;">Results — {label}</div>', unsafe_allow_html=True)
 
-    walk_start_utc = walk_start_est.tz_localize("America/New_York").tz_convert("UTC").tz_localize(None)
-    walk_end_utc   = walk_end_est.tz_localize("America/New_York").tz_convert("UTC").tz_localize(None)
-
+    # --- Load POPS CSV ---
     pops_df = pd.read_csv(csv_file).copy()
     pops_df["DateTime_utc"] = pd.to_datetime(pops_df["DateTime"], unit="s", utc=True).dt.tz_localize(None)
     if "PM2p5_ug_m3" not in pops_df.columns:
@@ -490,15 +476,23 @@ def run_pops(csv_file, kml_file, walk_start_est, walk_end_est, time_of_day, sess
     with c_int:
         show_integrity(score)
 
-    gps_df = parse_kml_track(kml_file)
-    check_overlap(walk_start_utc, walk_end_utc,
-                  gps_df["time"].min(), gps_df["time"].max(),
-                  "Walk Window", "GPS")
+    # --- Parse GPX (same function as POM) ---
+    gps_df = parse_gpx(gpx_file)
+    if gps_df.empty:
+        st.error("No GPS points found in GPX file.")
+        st.stop()
 
-    # PM2.5
+    # --- Overlap check ---
+    check_overlap(
+        pops_df["DateTime_utc"].min(), pops_df["DateTime_utc"].max(),
+        gps_df["time"].min(),          gps_df["time"].max(),
+        "POPS", "GPX"
+    )
+
+    # --- PM2.5 ---
     st.markdown("---")
     st.markdown('<div class="section-label">PM2.5</div>', unsafe_allow_html=True)
-    pm25_data = prepare_heatmap_data(pops_df, gps_df, walk_start_utc, walk_end_utc, "PM2p5_ug_m3")
+    pm25_data = prepare_heatmap_data(pops_df, gps_df, "PM2p5_ug_m3")
     st.caption(f"✓ {len(pm25_data):,} aligned points")
     pm25_outliers = show_summary_stats(pm25_data, "PM2p5_ug_m3", "µg/m³")
     show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8", pm25_outliers)
@@ -516,10 +510,10 @@ def run_pops(csv_file, kml_file, walk_start_est, walk_end_est, time_of_day, sess
     with open(pm25_file, "r", encoding="utf-8") as f:
         st.components.v1.html(f.read(), height=500)
 
-    # PartCon
+    # --- PartCon ---
     st.markdown("---")
     st.markdown('<div class="section-label">Particle Concentration</div>', unsafe_allow_html=True)
-    partcon_data = prepare_heatmap_data(pops_df, gps_df, walk_start_utc, walk_end_utc, "PartCon")
+    partcon_data = prepare_heatmap_data(pops_df, gps_df, "PartCon")
     st.caption(f"✓ {len(partcon_data):,} aligned points")
     pc_outliers = show_summary_stats(partcon_data, "PartCon", "#/cm³")
     show_timeseries(partcon_data, "PartCon", "Particle Concentration", "#/cm³", "#a78bfa", pc_outliers)
@@ -566,24 +560,12 @@ elif device == "POPS":
     with c1:
         csv_file = st.file_uploader("POPS CSV", type=["csv"])
     with c2:
-        kml_file = st.file_uploader("KML Track", type=["kml"])
-
-    st.markdown('<div class="section-label" style="margin-top:20px;">Walk Time Window (EST)</div>', unsafe_allow_html=True)
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        walk_date = st.date_input("Date")
-    with d2:
-        walk_start_time = st.time_input("Start Time")
-    with d3:
-        walk_end_time = st.time_input("End Time")
+        gpx_file = st.file_uploader("GPX Track", type=["gpx"])
 
     st.markdown("")
     if st.button("🗺️ Generate Maps"):
-        if csv_file is None or kml_file is None:
-            st.error("Please upload both the CSV and KML files.")
+        if csv_file is None or gpx_file is None:
+            st.error("Please upload both the CSV and GPX files.")
             st.stop()
         with st.spinner("Processing data and building maps…"):
-            walk_start_est = pd.Timestamp(f"{walk_date} {walk_start_time}")
-            walk_end_est   = pd.Timestamp(f"{walk_date} {walk_end_time}")
-            run_pops(csv_file, kml_file, walk_start_est, walk_end_est,
-                     time_of_day, session_label, map_mode)
+            run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode)
