@@ -100,7 +100,7 @@ st.markdown("""
 <div class="aq-header">
     <div class="aq-title">🌬️ AQTrack</div>
     <div class="aq-subtitle">Air quality heatmap generator — POM &amp; POPS device support</div>
-    <div class="aq-badge">v2.0 · Columbia University</div>
+    <div class="aq-badge">v2.0 · NASA EnAACT</div>
 </div>
 """, unsafe_allow_html=True)
 
