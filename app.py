@@ -395,7 +395,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 
     st.caption(f"✓ {len(data):,} aligned data points")
 
-    outliers = show_summary_stats(pom, data, "ozone", "ppb")
+    outliers = show_summary_stats(data, data, "ozone", "ppb")
     show_timeseries(data, "ozone", "Ozone Concentration", "ppb", "#38bdf8", outliers)
 
     st.markdown('<div class="section-label" style="margin-top:24px;">Map</div>', unsafe_allow_html=True)
