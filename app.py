@@ -162,17 +162,20 @@ def show_integrity(score):
 
 ############################
 # SUMMARY STATS + OUTLIERS
+# raw_data = full unmerged sensor series (for accurate stats)
+# map_data = GPS-aligned data (for outlier timestamp chips)
 ############################
 
 def show_summary_stats(raw_data, map_data, value_col, unit):
-    # Stats from full raw sensor data (unaffected by GPS alignment window)
+    # Stats calculated from raw sensor data
     mean_v = raw_data[value_col].mean()
     max_v  = raw_data[value_col].max()
     min_v  = raw_data[value_col].min()
     std_v  = raw_data[value_col].std()
     threshold = mean_v + 2.5 * std_v
-    # Outlier chips from GPS-aligned data (has timestamps for display)
-    outliers  = map_data[map_data[value_col] > threshold]
+
+    # Outlier chips sourced from aligned map_data (has timestamps + coords)
+    outliers = map_data[map_data[value_col] > threshold]
 
     st.markdown('<div class="section-label" style="margin-top:24px;">Walk Statistics</div>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
@@ -185,7 +188,7 @@ def show_summary_stats(raw_data, map_data, value_col, unit):
 
     if not outliers.empty:
         st.markdown('<div class="section-label" style="margin-top:20px;">Outlier Spikes</div>', unsafe_allow_html=True)
-        time_col = "index" if "index" in map_data.columns else map_data.columns[0]
+        time_col = "index" if "index" in outliers.columns else outliers.columns[0]
         chips = ""
         for _, row in outliers.head(10).iterrows():
             t = row[time_col].strftime("%H:%M:%S") if hasattr(row[time_col], "strftime") else str(row[time_col])
@@ -200,7 +203,7 @@ def show_summary_stats(raw_data, map_data, value_col, unit):
 # TIME SERIES PLOT
 ############################
 
-def show_timeseries(data, value_col, label, unit, color, outliers=None):
+def show_timeseries(data, value_col, label, unit, color, outliers=None, ylim=None):
     st.markdown(f'<div class="section-label" style="margin-top:24px;">{label} Over Time</div>', unsafe_allow_html=True)
 
     time_col = "index" if "index" in data.columns else data.columns[0]
@@ -215,6 +218,9 @@ def show_timeseries(data, value_col, label, unit, color, outliers=None):
         ax.scatter(outliers[time_col], outliers[value_col],
                    color="#f85149", s=18, zorder=5, label="Outliers")
         ax.legend(facecolor="#161b22", edgecolor="#21262d", labelcolor="#e6edf3", fontsize=8)
+
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=5))
@@ -274,7 +280,7 @@ def check_overlap(start_a, end_a, start_b, end_b, label_a, label_b):
 ############################
 
 def build_map(data, lat_col, lon_col, value_col, mode, filename,
-              legend_html=None, colormap=None, vmin=None, vmax=None, normalize=False):
+              legend_html=None, colormap=None, vmin=None, vmax=None):
     m = folium.Map(
         location=[data[lat_col].mean(), data[lon_col].mean()],
         zoom_start=15, tiles="CartoDB positron"
@@ -282,19 +288,15 @@ def build_map(data, lat_col, lon_col, value_col, mode, filename,
 
     _vmin = vmin if vmin is not None else data[value_col].min()
     _vmax = vmax if vmax is not None else data[value_col].max()
+
     cmap = colormap or cm.LinearColormap(
-        ["blue","cyan","yellow","orange","red"], vmin=_vmin, vmax=_vmax)
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=_vmin, vmax=_vmax
+    )
 
     if mode == "Heatmap":
-        if normalize:
-            scale = _vmax - _vmin if _vmax != _vmin else 1
-            heat_data = [
-                [row[lat_col], row[lon_col], (row[value_col] - _vmin) / scale]
-                for _, row in data.iterrows()
-            ]
-        else:
-            heat_data = [[row[lat_col], row[lon_col], row[value_col]] for _, row in data.iterrows()]
-        HeatMap(heat_data, radius=3, blur=3, max_zoom=24, min_opacity=0.4).add_to(m)
+        heat_data = [[row[lat_col], row[lon_col], row[value_col]] for _, row in data.iterrows()]
+        HeatMap(heat_data, radius=3, blur=3, max_zoom=24).add_to(m)
         cmap.add_to(m)
         if legend_html:
             m.get_root().html.add_child(folium.Element(legend_html))
@@ -315,7 +317,7 @@ def build_map(data, lat_col, lon_col, value_col, mode, filename,
     return m
 
 ############################
-# GPX PARSER (used by both POM and POPS)
+# GPX PARSER
 ############################
 
 def parse_gpx(gpx_file):
@@ -372,7 +374,6 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
         st.error("No GPS points found in GPX file.")
         st.stop()
 
-    # Inject GPX date into POM times (POM has no date in its time column)
     gpx_date = gps["time"].iloc[0].date()
     pom["time"] = pom["time"].apply(
         lambda t: t.replace(year=gpx_date.year, month=gpx_date.month, day=gpx_date.day)
@@ -395,6 +396,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 
     st.caption(f"✓ {len(data):,} aligned data points")
 
+    # Stats from raw POM sensor data; outlier chips from GPS-aligned data
     outliers = show_summary_stats(pom, data, "ozone", "ppb")
     show_timeseries(data, "ozone", "Ozone Concentration", "ppb", "#38bdf8", outliers)
 
@@ -416,9 +418,15 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
     Good → Moderate → USG → Unhealthy → Very Unhealthy → Hazardous
     </div></div>'''
 
+    pom_cmap = cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=0, vmax=200,
+        caption="Ozone (ppb)"
+    )
+
     map_file = "pom_ozone_map.html"
     build_map(data, "lat", "lon", "ozone", map_mode, map_file,
-              legend_html=legend_html, vmin=0, vmax=200)
+              legend_html=legend_html, colormap=pom_cmap, vmin=0, vmax=200)
 
     st.success(f"✅ Map generated — {len(data):,} points plotted")
     st.markdown(
@@ -444,12 +452,9 @@ def calculate_pm2_5(row):
 
 ############################
 # POPS ALIGNMENT
-# POPS DateTime is Unix UTC — no date injection needed, unlike POM.
-# GPX defines the walk window naturally through overlap.
 ############################
 
 def prepare_heatmap_data(pops_df, gps_df, value_col):
-    # Rename GPX lat/lon to match expected column names
     gps = gps_df.rename(columns={"lat": "latitude", "lon": "longitude"})
 
     pw = pops_df.set_index("DateTime_utc")
@@ -462,7 +467,6 @@ def prepare_heatmap_data(pops_df, gps_df, value_col):
     gr["latitude"]  = gr["latitude"].interpolate()
     gr["longitude"] = gr["longitude"].interpolate()
 
-    # Inner join on shared timestamps — this IS the walk window, no manual filter needed
     return pd.concat([pr, gr], axis=1).dropna().reset_index()
 
 ############################
@@ -489,7 +493,7 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     with c_int:
         show_integrity(score)
 
-    # --- Parse GPX (same function as POM) ---
+    # --- Parse GPX ---
     gps_df = parse_gpx(gpx_file)
     if gps_df.empty:
         st.error("No GPS points found in GPX file.")
@@ -502,20 +506,27 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
         "POPS", "GPX"
     )
 
-    # --- PM2.5 ---
+    # -----------------------------------------------
+    # PM2.5
+    # -----------------------------------------------
     st.markdown("---")
     st.markdown('<div class="section-label">PM2.5</div>', unsafe_allow_html=True)
     pm25_data = prepare_heatmap_data(pops_df, gps_df, "PM2p5_ug_m3")
     st.caption(f"✓ {len(pm25_data):,} aligned points")
+
+    # Stats from raw pops_df; outlier chips from GPS-aligned pm25_data
     pm25_outliers = show_summary_stats(pops_df, pm25_data, "PM2p5_ug_m3", "µg/m³")
     show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8", pm25_outliers)
 
     pm25_file = "pops_pm25_map.html"
-    pm25_vmin = pm25_data["PM2p5_ug_m3"].min()
-    pm25_vmax = pm25_data["PM2p5_ug_m3"].max()
-    pm25_cmap = cm.LinearColormap(["blue","cyan","yellow","orange","red"], vmin=pm25_vmin, vmax=pm25_vmax, caption="PM2.5 (µg/m³)")
+    pm25_cmap = cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=0, vmax=50,
+        caption="PM2.5 (µg/m³)"
+    )
     build_map(pm25_data, "latitude", "longitude", "PM2p5_ug_m3", map_mode, pm25_file,
-              colormap=pm25_cmap, vmin=pm25_vmin, vmax=pm25_vmax, normalize=True)
+              colormap=pm25_cmap, vmin=0, vmax=50)
+
     st.markdown('<div class="section-label" style="margin-top:16px;">PM2.5 Map</div>', unsafe_allow_html=True)
     st.markdown(
         get_download_link(pm25_file, "📥 Download PM2.5 Map", "pops_pm25_map.html") + " &nbsp;|&nbsp; " +
@@ -525,19 +536,29 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     with open(pm25_file, "r", encoding="utf-8") as f:
         st.components.v1.html(f.read(), height=500)
 
-    # --- PartCon ---
+    # -----------------------------------------------
+    # PartCon
+    # -----------------------------------------------
     st.markdown("---")
     st.markdown('<div class="section-label">Particle Concentration</div>', unsafe_allow_html=True)
     partcon_data = prepare_heatmap_data(pops_df, gps_df, "PartCon")
     st.caption(f"✓ {len(partcon_data):,} aligned points")
+
+    # Stats from raw pops_df; outlier chips from GPS-aligned partcon_data
     pc_outliers = show_summary_stats(pops_df, partcon_data, "PartCon", "#/cm³")
     show_timeseries(partcon_data, "PartCon", "Particle Concentration", "#/cm³", "#a78bfa", pc_outliers)
 
     partcon_file = "pops_partcon_map.html"
-    pc_vmin, pc_vmax = partcon_data["PartCon"].min(), partcon_data["PartCon"].max()
-    pc_cmap = cm.LinearColormap(["blue","cyan","yellow","orange","red"], vmin=pc_vmin, vmax=pc_vmax, caption="PartCon (#/cm³)")
+    pc_vmin = partcon_data["PartCon"].min()
+    pc_vmax = partcon_data["PartCon"].max()
+    pc_cmap = cm.LinearColormap(
+        ["blue", "cyan", "yellow", "orange", "red"],
+        vmin=pc_vmin, vmax=pc_vmax,
+        caption="Particle Concentration (#/cm³)"
+    )
     build_map(partcon_data, "latitude", "longitude", "PartCon", map_mode, partcon_file,
-              colormap=pc_cmap, vmin=pc_vmin, vmax=pc_vmax, normalize=True)
+              colormap=pc_cmap, vmin=pc_vmin, vmax=pc_vmax)
+
     st.markdown('<div class="section-label" style="margin-top:16px;">Particle Concentration Map</div>', unsafe_allow_html=True)
     st.markdown(
         get_download_link(partcon_file, "📥 Download PartCon Map", "pops_partcon_map.html") + " &nbsp;|&nbsp; " +
@@ -584,5 +605,6 @@ elif device == "POPS":
             st.stop()
         with st.spinner("Processing data and building maps…"):
             run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode)
+
 
 
