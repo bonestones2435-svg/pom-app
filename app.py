@@ -164,13 +164,15 @@ def show_integrity(score):
 # SUMMARY STATS + OUTLIERS
 ############################
 
-def show_summary_stats(data, value_col, unit):
-    mean_v = data[value_col].mean()
-    max_v  = data[value_col].max()
-    min_v  = data[value_col].min()
-    std_v  = data[value_col].std()
+def show_summary_stats(raw_data, map_data, value_col, unit):
+    # Stats from full raw sensor data (unaffected by GPS alignment window)
+    mean_v = raw_data[value_col].mean()
+    max_v  = raw_data[value_col].max()
+    min_v  = raw_data[value_col].min()
+    std_v  = raw_data[value_col].std()
     threshold = mean_v + 2.5 * std_v
-    outliers  = data[data[value_col] > threshold]
+    # Outlier chips from GPS-aligned data (has timestamps for display)
+    outliers  = map_data[map_data[value_col] > threshold]
 
     st.markdown('<div class="section-label" style="margin-top:24px;">Walk Statistics</div>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
@@ -183,7 +185,7 @@ def show_summary_stats(data, value_col, unit):
 
     if not outliers.empty:
         st.markdown('<div class="section-label" style="margin-top:20px;">Outlier Spikes</div>', unsafe_allow_html=True)
-        time_col = "index" if "index" in outliers.columns else outliers.columns[0]
+        time_col = "index" if "index" in map_data.columns else map_data.columns[0]
         chips = ""
         for _, row in outliers.head(10).iterrows():
             t = row[time_col].strftime("%H:%M:%S") if hasattr(row[time_col], "strftime") else str(row[time_col])
@@ -393,7 +395,7 @@ def run_pom(csv_file, gpx_file, time_of_day, session_label, map_mode):
 
     st.caption(f"✓ {len(data):,} aligned data points")
 
-    outliers = show_summary_stats(data, "ozone", "ppb")
+    outliers = show_summary_stats(pom, data, "ozone", "ppb")
     show_timeseries(data, "ozone", "Ozone Concentration", "ppb", "#38bdf8", outliers)
 
     st.markdown('<div class="section-label" style="margin-top:24px;">Map</div>', unsafe_allow_html=True)
@@ -505,7 +507,7 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     st.markdown('<div class="section-label">PM2.5</div>', unsafe_allow_html=True)
     pm25_data = prepare_heatmap_data(pops_df, gps_df, "PM2p5_ug_m3")
     st.caption(f"✓ {len(pm25_data):,} aligned points")
-    pm25_outliers = show_summary_stats(pm25_data, "PM2p5_ug_m3", "µg/m³")
+    pm25_outliers = show_summary_stats(pops_df, pm25_data, "PM2p5_ug_m3", "µg/m³")
     show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8", pm25_outliers)
 
     pm25_file = "pops_pm25_map.html"
@@ -528,7 +530,7 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     st.markdown('<div class="section-label">Particle Concentration</div>', unsafe_allow_html=True)
     partcon_data = prepare_heatmap_data(pops_df, gps_df, "PartCon")
     st.caption(f"✓ {len(partcon_data):,} aligned points")
-    pc_outliers = show_summary_stats(partcon_data, "PartCon", "#/cm³")
+    pc_outliers = show_summary_stats(pops_df, partcon_data, "PartCon", "#/cm³")
     show_timeseries(partcon_data, "PartCon", "Particle Concentration", "#/cm³", "#a78bfa", pc_outliers)
 
     partcon_file = "pops_partcon_map.html"
@@ -582,5 +584,3 @@ elif device == "POPS":
             st.stop()
         with st.spinner("Processing data and building maps…"):
             run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode)
-
-
