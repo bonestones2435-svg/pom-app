@@ -509,9 +509,11 @@ def run_pops(csv_file, gpx_file, time_of_day, session_label, map_mode):
     show_timeseries(pm25_data, "PM2p5_ug_m3", "PM2.5 Concentration", "µg/m³", "#38bdf8", pm25_outliers)
 
     pm25_file = "pops_pm25_map.html"
-    pm25_cmap = cm.LinearColormap(["blue","cyan","yellow","orange","red"], vmin=0, vmax=50, caption="PM2.5 (µg/m³)")
+    pm25_vmin = pm25_data["PM2p5_ug_m3"].min()
+    pm25_vmax = pm25_data["PM2p5_ug_m3"].max()
+    pm25_cmap = cm.LinearColormap(["blue","cyan","yellow","orange","red"], vmin=pm25_vmin, vmax=pm25_vmax, caption="PM2.5 (µg/m³)")
     build_map(pm25_data, "latitude", "longitude", "PM2p5_ug_m3", map_mode, pm25_file,
-              colormap=pm25_cmap, vmin=0, vmax=50, normalize=True)
+              colormap=pm25_cmap, vmin=pm25_vmin, vmax=pm25_vmax, normalize=True)
     st.markdown('<div class="section-label" style="margin-top:16px;">PM2.5 Map</div>', unsafe_allow_html=True)
     st.markdown(
         get_download_link(pm25_file, "📥 Download PM2.5 Map", "pops_pm25_map.html") + " &nbsp;|&nbsp; " +
